@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Detective 3D: Ultra Classroom Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            touch-action: manipulation;
+            user-select: none;
+            overflow: hidden;
+        }
+        #webgl-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        .modal-enter {
+            animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes popIn {
+            from { opacity: 0; transform: scale(0.92) translateY(12px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .glow-effect {
+            box-shadow: 0 0 25px rgba(56, 189, 248, 0.45);
+        }
+        .pulse-amber {
+            animation: pulseAmber 2s infinite ease-in-out;
+        }
+        @keyframes pulseAmber {
+            0%, 100% { box-shadow: 0 0 15px rgba(245, 158, 11, 0.5); transform: translateY(0); }
+            50% { box-shadow: 0 0 30px rgba(245, 158, 11, 0.8); transform: translateY(-4px); }
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(56, 189, 248, 0.5);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen relative flex flex-col justify-between overflow-hidden">
+
+    <!-- Top Header HUD -->
+    <header class="relative z-20 p-3.5 bg-slate-900/80 backdrop-blur-xl border-b border-slate-700/60 flex justify-between items-center px-6 shadow-2xl">
+        <div class="flex items-center gap-4">
+            <div class="bg-gradient-to-tr from-cyan-500 via-sky-500 to-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-cyan-500/30 flex items-center justify-center">
+                <i class="fa-solid fa-robot text-2xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-extrabold text-white tracking-wide flex items-center gap-3">
+                    CODE DETECTIVE 3D <span class="text-xs font-bold text-cyan-400 bg-cyan-950/80 px-3 py-1 rounded-full border border-cyan-500/40 tracking-normal">ULTRA REALISTIC</span>
+                </h1>
+                <p class="text-xs text-slate-300 hidden sm:block">สำรวจห้องเรียนปฏิบัติการไฮเทค สื่อสาร และซ่อมหุ่นยนต์ทั้ง 5 ตัว!</p>
+            </div>
+        </div>
+
+        <!-- Progress Counter & Control Hints -->
+        <div class="flex items-center gap-4">
+            <div class="bg-slate-800/90 border border-amber-500/40 px-4 py-2 rounded-2xl flex items-center gap-3 shadow-inner">
+                <i class="fa-solid fa-trophy text-amber-400 text-lg"></i>
+                <div class="flex flex-col">
+                    <span id="task-label" class="text-[10px] text-slate-400 font-medium uppercase tracking-wider">ภารกิจด่านที่ 1</span>
+                    <span id="task-progress" class="font-black text-amber-400 text-lg leading-tight">0 / 5</span>
+                </div>
+            </div>
+
+            <button id="btn-camera-toggle" class="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-semibold px-4 py-2.5 rounded-xl border border-slate-600 transition flex items-center gap-2 shadow-md">
+                <i class="fa-solid fa-video text-cyan-400"></i> มุมกล้อง 3D
+            </button>
+
+            <button id="btn-help" class="bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white text-xs font-semibold px-4 py-2.5 rounded-xl border border-cyan-400/50 transition shadow-lg shadow-cyan-600/30 flex items-center gap-2">
+                <i class="fa-solid fa-circle-question text-base"></i> วิธีเล่น
+            </button>
+        </div>
+    </header>
+
+    <!-- 3D Canvas Container -->
+    <div id="webgl-container"></div>
+
+    <!-- Interaction Prompt overlay -->
+    <div id="interaction-prompt" class="hidden absolute bottom-28 left-1/2 -translate-x-1/2 z-20 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 px-7 py-3.5 rounded-2xl font-extrabold shadow-2xl border-2 border-amber-300/60 flex items-center gap-3 cursor-pointer pulse-amber">
+        <i id="prompt-icon" class="fa-solid fa-screwdriver-wrench text-2xl text-slate-950"></i>
+        <div class="flex flex-col">
+            <span id="prompt-subtitle" class="text-xs opacity-80 uppercase tracking-wide">ตรวจพบหุ่นยนต์ชำรุด</span>
+            <span id="prompt-text" class="text-base tracking-wide">กด [ SPACE ] เพื่อเริ่มตรวจสอบ</span>
+        </div>
+    </div>
+
+    <!-- Mobile & Touch Controls HUD -->
+    <div class="relative z-20 p-4 flex justify-between items-end pointer-events-none mb-2 px-6">
+        <!-- Touch D-Pad -->
+        <div class="grid grid-cols-3 gap-1.5 w-36 h-36 pointer-events-auto bg-slate-900/80 p-2 rounded-3xl border border-slate-700/80 backdrop-blur-md shadow-2xl">
+            <div></div>
+            <button id="btn-up" class="bg-slate-800 active:bg-cyan-500 active:text-white text-slate-300 rounded-xl flex justify-center items-center shadow font-bold text-lg"><i class="fa-solid fa-caret-up"></i></button>
+            <div></div>
+            <button id="btn-left" class="bg-slate-800 active:bg-cyan-500 active:text-white text-slate-300 rounded-xl flex justify-center items-center shadow font-bold text-lg"><i class="fa-solid fa-caret-left"></i></button>
+            <button id="btn-action" class="bg-amber-500 active:bg-amber-600 text-slate-950 rounded-xl flex justify-center items-center shadow text-xl font-black"><i class="fa-solid fa-wrench"></i></button>
+            <button id="btn-right" class="bg-slate-800 active:bg-cyan-500 active:text-white text-slate-300 rounded-xl flex justify-center items-center shadow font-bold text-lg"><i class="fa-solid fa-caret-right"></i></button>
+            <div></div>
+            <button id="btn-down" class="bg-slate-800 active:bg-cyan-500 active:text-white text-slate-300 rounded-xl flex justify-center items-center shadow font-bold text-lg"><i class="fa-solid fa-caret-down"></i></button>
+            <div></div>
+        </div>
+
+        <!-- On-screen Legend -->
+        <div class="hidden md:flex gap-3 pointer-events-none bg-slate-900/80 backdrop-blur-md p-3 px-5 rounded-2xl border border-slate-700/60 text-xs text-slate-300">
+            <div class="flex items-center gap-2"><span class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded font-mono font-bold text-cyan-400">WASD / Arrow</span> เดิน</div>
+            <div class="flex items-center gap-2"><span class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded font-mono font-bold text-amber-400">SPACE</span> โต้ตอบ</div>
+            <div class="flex items-center gap-2"><span class="bg-slate-800 border border-slate-600 px-2 py-0.5 rounded font-mono font-bold text-sky-400">Mouse Drag</span> หมุนกล้องอิสระ</div>
+        </div>
+    </div>
+
+    <!-- Minigame Modal -->
+    <div id="minigame-modal" class="fixed inset-0 bg-slate-950/75 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border-2 border-cyan-500/40 rounded-3xl max-w-lg w-full p-6 shadow-2xl modal-enter relative text-slate-100 max-h-[90vh] overflow-y-auto">
+            <button id="btn-close-modal" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl w-9 h-9 rounded-full flex items-center justify-center bg-slate-800 hover:bg-slate-700 transition border border-slate-600">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            
+            <div class="flex items-center gap-4 mb-5 border-b border-slate-800 pb-4">
+                <div id="modal-icon" class="bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 p-3.5 rounded-2xl text-2xl flex items-center justify-center">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+                <div>
+                    <h3 id="modal-title" class="text-lg font-bold text-white tracking-wide">หัวข้อภารกิจ</h3>
+                    <p id="modal-subtitle" class="text-xs text-slate-400">วิเคราะห์และแก้ไขปัญหาซอฟต์แวร์หุ่นยนต์</p>
+                </div>
+            </div>
+
+            <div id="modal-content" class="mb-2"></div>
+        </div>
+    </div>
+
+    <!-- Level 2 Lab Interactive Modal -->
+    <div id="level2-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-lg hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-gradient-to-b from-slate-900 via-slate-900 to-indigo-950 border-2 border-cyan-400/60 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl modal-enter relative text-slate-100 max-h-[92vh] overflow-y-auto">
+            
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between border-b border-cyan-500/30 pb-4 mb-5">
+                <div class="flex items-center gap-3.5">
+                    <div class="bg-gradient-to-tr from-cyan-500 to-blue-600 p-3 rounded-2xl text-white shadow-lg shadow-cyan-500/40">
+                        <i class="fa-solid fa-magnifying-glass-code text-2xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-cyan-300 tracking-wide flex items-center gap-2">
+                            ภารกิจที่ 2: นักสืบจับผิดโปรแกรม
+                        </h2>
+                        <p class="text-xs text-slate-300">ห้องปฏิบัติการแก้ไขซอฟต์แวร์และตรวจสอบความผิดพลาด (Level 2)</p>
+                    </div>
+                </div>
+                <button id="btn-close-level2" class="text-slate-400 hover:text-white text-lg w-9 h-9 rounded-full flex items-center justify-center bg-slate-800/80 hover:bg-slate-700 transition border border-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Modal Dynamic Body Content -->
+            <div id="level2-content" class="space-y-4">
+                <!-- Introductory Overview Screen -->
+                <div id="level2-intro-view" class="space-y-5">
+                    <div class="bg-slate-800/70 p-5 rounded-2xl border border-cyan-500/30 text-sm text-slate-200 leading-relaxed flex items-start gap-4 shadow-inner">
+                        <i class="fa-solid fa-user-ninja text-3xl text-cyan-400 mt-1"></i>
+                        <div>
+                            <p class="font-bold text-white text-base mb-1">ยินดีต้อนรับสู่นักสืบจับผิดโค้ด!</p>
+                            <p class="text-xs sm:text-sm text-slate-300">
+                                "โปรแกรมเมอร์ทุกคนอาจเขียนโปรแกรมผิดพลาดได้ หน้าที่ของนักสืบโค้ดคือ ตรวจสอบผลลัพธ์ ค้นหาจุดที่ผิด และแก้ไขคำสั่งให้โปรแกรมทำงานได้ถูกต้อง"
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-3 text-center">
+                        <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-700/80">
+                            <i class="fa-solid fa-eye text-cyan-400 text-xl mb-1"></i>
+                            <div class="text-[11px] font-bold text-slate-300">1. สังเกตผลลัพธ์</div>
+                        </div>
+                        <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-700/80">
+                            <i class="fa-solid fa-bug text-amber-400 text-xl mb-1"></i>
+                            <div class="text-[11px] font-bold text-slate-300">2. ค้นหาบั๊ก</div>
+                        </div>
+                        <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-700/80">
+                            <i class="fa-solid fa-wand-magic-sparkles text-emerald-400 text-xl mb-1"></i>
+                            <div class="text-[11px] font-bold text-slate-300">3. แก้ไข & ทดสอบ</div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-3 pt-2">
+                        <button id="btn-start-level2-lesson" class="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold py-3.5 px-4 rounded-2xl transition shadow-lg shadow-cyan-500/30 flex items-center justify-center gap-2 text-sm">
+                            <i class="fa-solid fa-play"></i> เริ่มเรียนรู้
+                        </button>
+                        <button id="btn-cancel-level2" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3.5 px-6 rounded-2xl border border-slate-600 transition text-sm">
+                            กลับไปสำรวจ
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Step-by-Step Learning View -->
+                <div id="level2-step-view" class="hidden space-y-4">
+                    <!-- Progress Bar Header -->
+                    <div class="flex items-center justify-between bg-slate-950/80 p-3 px-4 rounded-xl border border-slate-800">
+                        <span id="level2-step-indicator" class="text-xs font-extrabold text-cyan-400 tracking-wider">ความคืบหน้า: ขั้นตอนที่ 1 / 3</span>
+                        <div class="w-36 bg-slate-800 rounded-full h-2.5 overflow-hidden border border-slate-700">
+                            <div id="level2-progress-bar" class="bg-gradient-to-r from-cyan-400 to-emerald-400 h-full w-1/3 transition-all duration-500"></div>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Lesson Card Interactive Box -->
+                    <div id="level2-step-container"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Level 3 Master Debugger Modal -->
+    <div id="level3-modal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-xl hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-gradient-to-b from-slate-900 via-slate-950 to-purple-950 border-2 border-purple-500/60 rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl modal-enter relative text-slate-100 max-h-[92vh] overflow-y-auto">
+            
+            <div class="flex items-center justify-between border-b border-purple-500/30 pb-4 mb-5">
+                <div class="flex items-center gap-3.5">
+                    <div class="bg-gradient-to-tr from-purple-600 to-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-purple-500/40">
+                        <i class="fa-solid fa-bug-slash text-2xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-extrabold text-purple-300 tracking-wide flex items-center gap-2">
+                            ภารกิจที่ 3: สงครามดีบั๊กขั้นเซียน (Level 3)
+                        </h2>
+                        <p class="text-xs text-slate-300">ถอดรหัสวิเคราะห์ Syntax, Logic & Runtime Error ในระบบหลัก</p>
+                    </div>
+                </div>
+                <button id="btn-close-level3" class="text-slate-400 hover:text-white text-lg w-9 h-9 rounded-full flex items-center justify-center bg-slate-800/80 hover:bg-slate-700 transition border border-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div id="level3-content" class="space-y-4">
+                <div class="flex items-center justify-between bg-slate-950/90 p-3 px-4 rounded-xl border border-purple-900">
+                    <span id="level3-step-indicator" class="text-xs font-extrabold text-purple-400 tracking-wider">ด่านขั้นสูง: ข้อที่ 1 / 2</span>
+                    <div class="w-36 bg-slate-800 rounded-full h-2.5 overflow-hidden border border-slate-700">
+                        <div id="level3-progress-bar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-full w-1/2 transition-all duration-500"></div>
+                    </div>
+                </div>
+
+                <div id="level3-question-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="fixed inset-0 bg-slate-950/75 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-slate-900 border border-cyan-500/40 rounded-3xl max-w-md w-full p-6 shadow-2xl modal-enter text-slate-100">
+            <div class="flex items-center gap-3.5 mb-4 border-b border-slate-800 pb-3">
+                <div class="bg-amber-500/20 text-amber-400 border border-amber-500/40 p-3 rounded-2xl"><i class="fa-solid fa-lightbulb text-xl"></i></div>
+                <h3 class="text-lg font-bold text-white">คู่มือการเล่นปฏิบัติการ</h3>
+            </div>
+            <div class="space-y-3.5 text-xs text-slate-300 leading-relaxed mb-6">
+                <p class="flex items-start gap-2">
+                    <i class="fa-solid fa-triangle-exclamation text-rose-400 text-sm mt-0.5"></i>
+                    <span><strong>1. ค้นหาจุดขัดข้อง:</strong> เดินสำรวจห้องเรียนเพื่อค้นหาหุ่นยนต์ที่มีสัญญาณเตือนปุ่มสีแดงลอยส่องสว่าง</span>
+                </p>
+                <div class="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 space-y-2 text-slate-300">
+                    <p>⌨️ <strong>การเคลื่อนที่:</strong> ปุ่ม <strong>W, A, S, D</strong> หรือ <strong>ลูกศรทิศทาง</strong></p>
+                    <p>🛠️ <strong>การเปิดมินิเกม:</strong> เดินเข้าใกล้หุ่นยนต์แล้วกด <strong>SPACEBAR</strong></p>
+                    <p>🖱️ <strong>การหมุนดูรอบห้อง:</strong> คลิกเมาส์ขวาหรือปุ่มกล้องเพื่อปรับมุมมอง 3D</p>
+                </div>
+                <p class="flex items-start gap-2">
+                    <i class="fa-solid fa-circle-check text-emerald-400 text-sm mt-0.5"></i>
+                    <span><strong>2. ผลลัพธ์หลังการซ่อม:</strong> หุ่นยนต์จะปลดล็อกระบบ มีไฟสถานะ LED สีเขียว และเปิดโหมดขับเคลื่อนเดินอัตโนมัติรอบห้องเรียน!</span>
+                </p>
+            </div>
+            <button id="btn-close-help" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:opacity-95 text-white font-bold py-3.5 rounded-2xl transition shadow-lg shadow-cyan-500/25">
+                เข้าใจแล้ว เริ่มภารกิจ!
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Core WebGL / Three.js Variables
+        let scene, camera, renderer, clock;
+        let playerGroup, playerLight;
+        let cameraAngle = Math.PI / 4;
+        let targetCameraAngle = Math.PI / 4;
+        let isOrbiting = false;
+        let previousMouseX = 0;
+
+        // Particle System
+        let dustParticles;
+
+        // Main Computer Interactive Terminal (Level 2 & 3 Unlockable)
+        let mainComputerMesh = null;
+        let mainComputerBeacon = null;
+
+        // Robot Quests & Game State
+        const gameState = {
+            keys: {},
+            playerPos: { x: 0, z: 4.5 },
+            playerSpeed: 0.12,
+            playerRotation: 0,
+            level: 1, // Current Game Level
+            level1Completed: false,
+            level2Unlocked: false,
+            level2Completed: false,
+            level3Unlocked: false,
+            level3Completed: false,
+            level2Step: 1, // Current step in Level 2 (1, 2, or 3)
+            level3Step: 1, // Current step in Level 3 (1 or 2)
+            quests: {
+                vacuum: { id: 1, name: 'หุ่นยนต์ดูดฝุ่น (Smart Vacuum Bot)', completed: false, mesh: null, badge: null, light: null, pos: { x: -6.2, z: -3.5 }, targetPos: null },
+                helper: { id: 2, name: 'หุ่นยนต์ผู้ช่วย Android (Helper Bot)', completed: false, mesh: null, badge: null, light: null, pos: { x: -3.8, z: 2.2 }, targetPos: null },
+                arm:    { id: 3, name: 'แขนกลอัตโนมัติ (Industrial Arm)', completed: false, mesh: null, badge: null, light: null, pos: { x: 6.2, z: -3.5 }, targetPos: null },
+                runner: { id: 4, name: 'หุ่นยนต์ส่งเอกสาร (Courier Rover)', completed: false, mesh: null, badge: null, light: null, pos: { x: 5.5, z: 2.2 }, targetPos: null },
+                dog:    { id: 5, name: 'หุ่นยนต์สุนัข CyberDog (Robo Quadruped)', completed: false, mesh: null, badge: null, light: null, pos: { x: 0, z: -1.8 }, targetPos: null }
+            },
+            mainComputerPos: { x: 0, z: -4.0 },
+            activeQuest: null,
+            activeInteractionType: null // 'quest' or 'mainComputer'
+        };
+
+        // Material Palette for Photorealistic PBR Surfaces
+        const materials = {
+            floorTile: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.25, metalness: 0.1 }),
+            floorGrid: new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 }),
+            wallBlue: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 }),
+            wallPanel: new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3, metalness: 0.2 }),
+            woodDesk: new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.4, metalness: 0.05 }),
+            metalLegs: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.2, metalness: 0.8 }),
+            monitorCasing: new THREE.MeshStandardMaterial({ color: 0x020617, roughness: 0.3, metalness: 0.5 }),
+            screenActive: new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.8, roughness: 0.1 }),
+            screenCode: new THREE.MeshStandardMaterial({ color: 0x10b981, emissive: 0x059669, emissiveIntensity: 0.7, roughness: 0.1 }),
+            whiteboard: new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.1, metalness: 0.1 }),
+            whiteboardFrame: new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.8 }),
+            brassGlow: new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xd97706, emissiveIntensity: 0.6 }),
+            robotMetallic: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.15, metalness: 0.85 }),
+            robotOrange: new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.3, metalness: 0.4 }),
+            robotCyan: new THREE.MeshStandardMaterial({ color: 0x06b6d4, roughness: 0.2, metalness: 0.6 }),
+            glassWindow: new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, roughness: 0.1, transmission: 0.9 }),
+            plantLeaf: new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.5 }),
+            plantPot: new THREE.MeshStandardMaterial({ color: 0xc2410c, roughness: 0.7 })
+        };
+
+        function init3D() {
+            const container = document.getElementById('webgl-container');
+            clock = new THREE.Clock();
+
+            // Scene Setup with Fog for Depth Perception
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0f1d);
+            scene.fog = new THREE.FogExp2(0x0a0f1d, 0.022);
+
+            // Perspective Camera with Smooth Realistic Orbit
+            const aspect = window.innerWidth / window.innerHeight;
+            camera = new THREE.PerspectiveCamera(42, aspect, 0.1, 100);
+            updateCameraPosition();
+
+            // Renderer Configuration
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.15;
+            container.appendChild(renderer.domElement);
+
+            // Dynamic & Photorealistic Lighting
+            setupLighting();
+
+            // Build Ultra-Detailed Classroom Environment
+            buildClassroomEnvironment();
+
+            // Build Animated Player Character
+            buildPlayer3D();
+
+            // Build All 5 Interactive Robots
+            buildAllRobots3D();
+
+            // Add Ambient Dust Particles Effect
+            createParticleAtmosphere();
+
+            // Window Resize & Orbit Controls Listener
+            window.addEventListener('resize', onWindowResize);
+            setupMouseCameraDrag(container);
+        }
+
+        function setupLighting() {
+            // Ambient Soft Fill Light
+            const ambient = new THREE.AmbientLight(0x1e293b, 1.2);
+            scene.add(ambient);
+
+            // Key Sun/Window Light (Main Shadow Caster)
+            const sunLight = new THREE.DirectionalLight(0xffedd5, 2.2);
+            sunLight.position.set(14, 22, 12);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 45;
+            const shadowSize = 14;
+            sunLight.shadow.camera.left = -shadowSize;
+            sunLight.shadow.camera.right = shadowSize;
+            sunLight.shadow.camera.top = shadowSize;
+            sunLight.shadow.camera.bottom = -shadowSize;
+            sunLight.shadow.bias = -0.0005;
+            scene.add(sunLight);
+
+            // Ceiling Blue Neon Strip Lights (Cool Rim Lighting)
+            const ceilingLight = new THREE.DirectionalLight(0x38bdf8, 1.4);
+            ceilingLight.position.set(-12, 15, -10);
+            scene.add(ceilingLight);
+
+            // Soft Whiteboard Highlight Spot Light
+            const boardSpot = new THREE.SpotLight(0x38bdf8, 2.5, 12, Math.PI / 4, 0.5);
+            boardSpot.position.set(0, 5, -5.5);
+            boardSpot.target.position.set(0, 2.5, -6.8);
+            scene.add(boardSpot);
+            scene.add(boardSpot.target);
+        }
+
+        function buildClassroomEnvironment() {
+            // Tiled Flooring with Metallic Grid Accents
+            const floorGroup = new THREE.Group();
+            const floorGeo = new THREE.BoxGeometry(19, 0.4, 15);
+            const floor = new THREE.Mesh(floorGeo, materials.floorTile);
+            floor.position.y = -0.2;
+            floor.receiveShadow = true;
+            floorGroup.add(floor);
+
+            // Grid Pattern Over Floor
+            const gridHelper = new THREE.GridHelper(19, 19, 0x38bdf8, 0x1e293b);
+            gridHelper.position.y = 0.01;
+            floorGroup.add(gridHelper);
+            scene.add(floorGroup);
+
+            // High Wall Architecture
+            const wallMat = materials.wallBlue;
+            const backWall = new THREE.Mesh(new THREE.BoxGeometry(19, 5, 0.5), wallMat);
+            backWall.position.set(0, 2.5, -7.5);
+            backWall.receiveShadow = true;
+            scene.add(backWall);
+
+            const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 15), wallMat);
+            leftWall.position.set(-9.5, 2.5, 0);
+            leftWall.receiveShadow = true;
+            scene.add(leftWall);
+
+            // Interactive Whiteboard with Futuristic Circuit Blueprint
+            createHighTechWhiteboard(0, 2.8, -7.2);
+
+            // Modern Computer Desks (4 Sets of Workstations)
+            const deskPositions = [
+                {x: -4.5, z: -4}, {x: 4.5, z: -4},
+                {x: -4.5, z: 0.5}, {x: 4.5, z: 0.5}
+            ];
+            deskPositions.forEach((pos, idx) => createDetailedComputerDesk(pos.x, pos.z, idx));
+
+            // Bookshelf and Server Racks
+            createServerRack3D(-8.2, 0, -6);
+            createBookshelf3D(8.2, 0, -6);
+
+            // Decorative Indoor Plants
+            createPottedPlant(-8.2, 5.5);
+            createPottedPlant(8.2, 5.5);
+            createPottedPlant(-8.2, -5.5);
+            createPottedPlant(8.2, -5.5);
+
+            // Main Master Terminal Computer Desk (Center Top)
+            createMainMasterTerminal(gameState.mainComputerPos.x, gameState.mainComputerPos.z);
+        }
+
+        function createMainMasterTerminal(x, z) {
+            const masterGroup = new THREE.Group();
+
+            // Desk Platform
+            const deskTop = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 1.2), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.5 }));
+            deskTop.position.y = 1.0;
+            deskTop.castShadow = true;
+            masterGroup.add(deskTop);
+
+            // Desk Legs
+            [[-0.9, -0.45], [0.9, -0.45], [-0.9, 0.45], [0.9, 0.45]].forEach(lp => {
+                const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.0), materials.metalLegs);
+                leg.position.set(lp[0], 0.5, lp[1]);
+                masterGroup.add(leg);
+            });
+
+            // Giant Master Monitor Screen
+            const screenMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(1.6, 0.95, 0.1),
+                new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.6 })
+            );
+            screenMesh.position.set(0, 1.7, -0.2);
+            masterGroup.add(screenMesh);
+
+            const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 0.5), materials.metalLegs);
+            stand.position.set(0, 1.25, -0.2);
+            masterGroup.add(stand);
+
+            masterGroup.position.set(x, 0, z);
+            scene.add(masterGroup);
+            mainComputerMesh = masterGroup;
+        }
+
+        function createMainComputerBeacon3D() {
+            if (mainComputerBeacon) return; // Prevent duplicate instantiation
+
+            const beaconGroup = new THREE.Group();
+
+            // Glowing Pulsing Holographic Ring
+            const ringGeo = new THREE.TorusGeometry(0.7, 0.06, 16, 32);
+            const ringMat = new THREE.MeshStandardMaterial({
+                color: 0x38bdf8,
+                emissive: 0x0284c7,
+                emissiveIntensity: 1.2,
+                roughness: 0.1
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = Math.PI / 2;
+            ring.position.y = 0.05;
+            beaconGroup.add(ring);
+
+            // Glowing Vertical Target Marker
+            const cylinder = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.02, 0.5, 2.5, 16, 1, true),
+                new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+            );
+            cylinder.position.y = 1.25;
+            beaconGroup.add(cylinder);
+
+            // Dynamic PointLight Aura
+            const beaconLight = new THREE.PointLight(0x38bdf8, 2.8, 6);
+            beaconLight.position.set(0, 2.0, 0);
+            beaconGroup.add(beaconLight);
+
+            beaconGroup.position.set(gameState.mainComputerPos.x, 0, gameState.mainComputerPos.z);
+            scene.add(beaconGroup);
+            mainComputerBeacon = beaconGroup;
+        }
+
+        function createHighTechWhiteboard(x, y, z) {
+            const group = new THREE.Group();
+            
+            // Frame
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(9.2, 2.8, 0.1), materials.whiteboardFrame);
+            group.add(frame);
+
+            // Board Surface
+            const board = new THREE.Mesh(new THREE.BoxGeometry(9, 2.6, 0.12), materials.whiteboard);
+            board.position.z = 0.02;
+            group.add(board);
+
+            // Circuit Blueprint Graphic Overlay
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#f8fafc';
+            ctx.fillRect(0, 0, 512, 256);
+            ctx.strokeStyle = '#0284c7';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(20, 20, 472, 216);
+
+            ctx.fillStyle = '#0f172a';
+            ctx.font = 'bold 22px sans-serif';
+            ctx.fillText('CODE DETECTIVE: DIAGNOSTIC BLUEPRINT', 40, 55);
+
+            // Diagram Lines
+            ctx.strokeStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.moveTo(50, 120); ctx.lineTo(150, 120); ctx.lineTo(200, 180); ctx.lineTo(350, 180);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#10b981';
+            ctx.beginPath();
+            ctx.moveTo(50, 180); ctx.lineTo(180, 180); ctx.lineTo(240, 100); ctx.lineTo(440, 100);
+            ctx.stroke();
+
+            const canvasTexture = new THREE.CanvasTexture(canvas);
+            const diagramMat = new THREE.MeshStandardMaterial({ map: canvasTexture, roughness: 0.2 });
+            const diagram = new THREE.Mesh(new THREE.PlaneGeometry(8.8, 2.4), diagramMat);
+            diagram.position.z = 0.09;
+            group.add(diagram);
+
+            group.position.set(x, y, z);
+            scene.add(group);
+        }
+
+        function createDetailedComputerDesk(x, z, index) {
+            const deskGroup = new THREE.Group();
+
+            // Table Top
+            const top = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.15, 1.4), materials.woodDesk);
+            top.position.y = 1.0;
+            top.castShadow = true;
+            top.receiveShadow = true;
+            deskGroup.add(top);
+
+            // Metallic Legs
+            [[-1.25, -0.55], [1.25, -0.55], [-1.25, 0.55], [1.25, 0.55]].forEach(legPos => {
+                const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.0), materials.metalLegs);
+                leg.position.set(legPos[0], 0.5, legPos[1]);
+                leg.castShadow = true;
+                deskGroup.add(leg);
+            });
+
+            // Modern Flat Screen Monitors
+            const monitorFrame = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.75, 0.08), materials.monitorCasing);
+            monitorFrame.position.set(0, 1.55, -0.35);
+            monitorFrame.castShadow = true;
+            deskGroup.add(monitorFrame);
+
+            const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.1, 0.4), materials.metalLegs);
+            stand.position.set(0, 1.18, -0.35);
+            deskGroup.add(stand);
+
+            // Glowing Screen
+            const screenMat = (index % 2 === 0) ? materials.screenActive : materials.screenCode;
+            const screen = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.65), screenMat);
+            screen.position.set(0, 1.55, -0.30);
+            deskGroup.add(screen);
+
+            // Keyboard & Mouse
+            const kb = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.03, 0.25), materials.monitorCasing);
+            kb.position.set(-0.1, 1.09, 0.1);
+            deskGroup.add(kb);
+
+            const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.04, 0.15), materials.monitorCasing);
+            mouse.position.set(0.5, 1.09, 0.1);
+            deskGroup.add(mouse);
+
+            // Ergonomic Chair
+            const chairGroup = new THREE.Group();
+            const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.08, 16), materials.robotCyan);
+            seat.position.y = 0.55;
+            chairGroup.add(seat);
+
+            const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.08), materials.robotCyan);
+            backrest.position.set(0, 0.85, -0.3);
+            chairGroup.add(backrest);
+
+            const chairBase = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.25, 0.5, 8), materials.metalLegs);
+            chairBase.position.y = 0.25;
+            chairGroup.add(chairBase);
+
+            chairGroup.position.set(0, 0, 0.7);
+            deskGroup.add(chairGroup);
+
+            deskGroup.position.set(x, 0, z);
+            scene.add(deskGroup);
+        }
+
+        function createServerRack3D(x, y, z) {
+            const rack = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3.8, 1.2), materials.monitorCasing);
+            rack.position.set(x, 1.9, z);
+            rack.castShadow = true;
+            scene.add(rack);
+
+            // Blinking Server Lights
+            for (let i = 0; i < 6; i++) {
+                const led = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0x38bdf8 : 0x10b981 }));
+                led.position.set(x + 0.5, 0.8 + (i * 0.45), z + 0.61);
+                scene.add(led);
+            }
+        }
+
+        function createBookshelf3D(x, y, z) {
+            const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3.8, 1.2), materials.woodDesk);
+            shelf.position.set(x, 1.9, z);
+            shelf.castShadow = true;
+            scene.add(shelf);
+        }
+
+        function createPottedPlant(x, z) {
+            const group = new THREE.Group();
+            const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.3, 0.7, 16), materials.plantPot);
+            pot.position.y = 0.35;
+            pot.castShadow = true;
+            group.add(pot);
+
+            const foliage = new THREE.Mesh(new THREE.DodecahedronGeometry(0.55), materials.plantLeaf);
+            foliage.position.y = 0.95;
+            foliage.castShadow = true;
+            group.add(foliage);
+
+            group.position.set(x, 0, z);
+            scene.add(group);
+        }
+
+        function buildPlayer3D() {
+            playerGroup = new THREE.Group();
+
+            // Torso / Jacket
+            const jacket = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.32, 0.85, 16), new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 }));
+            jacket.position.y = 0.82;
+            jacket.castShadow = true;
+            playerGroup.add(jacket);
+
+            // Head & Hair
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 24, 24), new THREE.MeshStandardMaterial({ color: 0xffedd5, roughness: 0.4 }));
+            head.position.y = 1.5;
+            head.castShadow = true;
+            playerGroup.add(head);
+
+            const hair = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16, 0, Math.PI * 2, 0, Math.PI / 1.8), new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.6 }));
+            hair.position.y = 1.55;
+            playerGroup.add(hair);
+
+            // Detective Backpack
+            const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.5, 0.22), materials.brassGlow);
+            backpack.position.set(0, 0.9, -0.32);
+            backpack.castShadow = true;
+            playerGroup.add(backpack);
+
+            // Personal Spotlight Aura
+            playerLight = new THREE.PointLight(0x38bdf8, 1.2, 5);
+            playerLight.position.set(0, 2.0, 0);
+            playerGroup.add(playerLight);
+
+            playerGroup.position.set(gameState.playerPos.x, 0, gameState.playerPos.z);
+            scene.add(playerGroup);
+        }
+
+        function buildAllRobots3D() {
+            // 1. Vacuum Robot
+            const vacGroup = new THREE.Group();
+            const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 0.24, 32), materials.robotMetallic);
+            disc.position.y = 0.12;
+            disc.castShadow = true;
+            vacGroup.add(disc);
+
+            const lidar = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.12, 16), new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x991b1b }));
+            lidar.position.y = 0.28;
+            vacGroup.add(lidar);
+            setupRobotMesh('vacuum', vacGroup);
+
+            // 2. Helper Bot (Android Humanoid)
+            const helperGroup = new THREE.Group();
+            const hBody = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.32, 0.8, 16), materials.robotOrange);
+            hBody.position.y = 0.55;
+            hBody.castShadow = true;
+            helperGroup.add(hBody);
+
+            const hHead = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.42, 0.42), materials.robotMetallic);
+            hHead.position.y = 1.15;
+            hHead.castShadow = true;
+            helperGroup.add(hHead);
+
+            const hVisor = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.16), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+            hVisor.position.set(0, 1.17, 0.22);
+            helperGroup.add(hVisor);
+            setupRobotMesh('helper', helperGroup);
+
+            // 3. Robotic Arm
+            const armGroup = new THREE.Group();
+            const armBase = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.4, 1.1), materials.monitorCasing);
+            armBase.position.y = 0.2;
+            armBase.castShadow = true;
+            armGroup.add(armBase);
+
+            const armJoint = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.9), materials.robotOrange);
+            armJoint.position.set(0, 0.75, 0);
+            armJoint.rotation.z = Math.PI / 4;
+            armJoint.castShadow = true;
+            armGroup.add(armJoint);
+            setupRobotMesh('arm', armGroup);
+
+            // 4. Delivery Bot
+            const delivGroup = new THREE.Group();
+            const dBox = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.65, 0.75), materials.robotCyan);
+            dBox.position.y = 0.5;
+            dBox.castShadow = true;
+            delivGroup.add(dBox);
+
+            [-0.4, 0.4].forEach(wx => {
+                [-0.28, 0.28].forEach(wz => {
+                    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.1, 16), materials.monitorCasing);
+                    wheel.rotation.z = Math.PI / 2;
+                    wheel.position.set(wx, 0.16, wz);
+                    delivGroup.add(wheel);
+                });
+            });
+            setupRobotMesh('runner', delivGroup);
+
+            // 5. CyberDog
+            const dogGroup = new THREE.Group();
+            const dogBody = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.32, 0.85), materials.robotMetallic);
+            dogBody.position.y = 0.5;
+            dogBody.castShadow = true;
+            dogGroup.add(dogBody);
+
+            const dogHead = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.28, 0.38), materials.robotCyan);
+            dogHead.position.set(0, 0.68, 0.38);
+            dogHead.castShadow = true;
+            dogGroup.add(dogHead);
+
+            [[-0.22, 0.25], [0.22, 0.25], [-0.22, -0.25], [0.22, -0.25]].forEach(lp => {
+                const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.4), materials.metalLegs);
+                leg.position.set(lp[0], 0.2, lp[1]);
+                dogGroup.add(leg);
+            });
+            setupRobotMesh('dog', dogGroup);
+        }
+
+        function setupRobotMesh(key, group) {
+            const q = gameState.quests[key];
+            group.position.set(q.pos.x, 0, q.pos.z);
+            scene.add(group);
+            q.mesh = group;
+
+            // Create Animated Floating Warning Beacon
+            createWarningBadge3D(q);
+        }
+
+        function createWarningBadge3D(quest) {
+            const badgeGroup = new THREE.Group();
+            
+            // Glowing Octahedron Diamond
+            const diamondGeo = new THREE.OctahedronGeometry(0.32);
+            const diamondMat = new THREE.MeshStandardMaterial({ 
+                color: 0xef4444, 
+                emissive: 0xd97706, 
+                emissiveIntensity: 0.9,
+                roughness: 0.2 
+            });
+            const diamond = new THREE.Mesh(diamondGeo, diamondMat);
+            badgeGroup.add(diamond);
+
+            // Exclamation Symbol
+            const exclamationGeo = new THREE.CylinderGeometry(0.07, 0.04, 0.28);
+            const exclamationMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const exclamation = new THREE.Mesh(exclamationGeo, exclamationMat);
+            exclamation.position.set(0, 0, 0.32);
+            exclamation.rotation.x = Math.PI / 2;
+            badgeGroup.add(exclamation);
+
+            // Red Warning PointLight Beam
+            const beaconLight = new THREE.PointLight(0xef4444, 1.8, 4);
+            beaconLight.position.set(0, 0, 0);
+            badgeGroup.add(beaconLight);
+            quest.light = beaconLight;
+
+            badgeGroup.position.set(quest.pos.x, 2.2, quest.pos.z);
+            scene.add(badgeGroup);
+            quest.badge = badgeGroup;
+        }
+
+        function createParticleAtmosphere() {
+            const particleCount = 120;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 18;
+                positions[i + 1] = Math.random() * 4 + 0.5;
+                positions[i + 2] = (Math.random() - 0.5) * 14;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const pMaterial = new THREE.PointsMaterial({
+                color: 0x38bdf8,
+                size: 0.06,
+                transparent: true,
+                opacity: 0.4
+            });
+
+            dustParticles = new THREE.Points(geometry, pMaterial);
+            scene.add(dustParticles);
+        }
+
+        function updateCameraPosition() {
+            const distance = 16.5;
+            camera.position.x = distance * Math.cos(cameraAngle);
+            camera.position.z = distance * Math.sin(cameraAngle);
+            camera.position.y = 13.5;
+            camera.lookAt(0, 0.5, 0);
+        }
+
+        function setupMouseCameraDrag(container) {
+            container.addEventListener('mousedown', (e) => {
+                if (e.button === 2 || e.button === 0) { // Mouse drag to rotate camera
+                    isOrbiting = true;
+                    previousMouseX = e.clientX;
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (isOrbiting) {
+                    const deltaX = e.clientX - previousMouseX;
+                    targetCameraAngle += deltaX * 0.005;
+                    previousMouseX = e.clientX;
+                }
+            });
+
+            window.addEventListener('mouseup', () => { isOrbiting = false; });
+            container.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function updatePlayerAndRobots() {
+            // Block character movement if modals are open
+            const isMinigameOpen = !document.getElementById('minigame-modal').classList.contains('hidden');
+            const isLevel2Open = !document.getElementById('level2-modal').classList.contains('hidden');
+            const isHelpOpen = !document.getElementById('help-modal').classList.contains('hidden');
+
+            if (!isMinigameOpen && !isLevel2Open && !isHelpOpen) {
+                let dx = 0, dz = 0;
+                if (gameState.keys['ArrowUp'] || gameState.keys['w'] || gameState.keys['W']) dz -= 1;
+                if (gameState.keys['ArrowDown'] || gameState.keys['s'] || gameState.keys['S']) dz += 1;
+                if (gameState.keys['ArrowLeft'] || gameState.keys['a'] || gameState.keys['A']) dx -= 1;
+                if (gameState.keys['ArrowRight'] || gameState.keys['d'] || gameState.keys['D']) dx += 1;
+
+                if (dx !== 0 || dz !== 0) {
+                    const angle = Math.atan2(dz, dx) + cameraAngle - Math.PI / 4;
+                    const nextX = gameState.playerPos.x + Math.cos(angle) * gameState.playerSpeed;
+                    const nextZ = gameState.playerPos.z + Math.sin(angle) * gameState.playerSpeed;
+
+                    if (Math.abs(nextX) < 8.6 && Math.abs(nextZ) < 6.6) {
+                        gameState.playerPos.x = nextX;
+                        gameState.playerPos.z = nextZ;
+                        playerGroup.position.set(nextX, 0, nextZ);
+                        playerGroup.rotation.y = -angle + Math.PI / 2;
+                    }
+                }
+            }
+
+            const time = clock.getElapsedTime();
+
+            // Animate Dust Particles
+            if (dustParticles) {
+                dustParticles.rotation.y = time * 0.02;
+            }
+
+            // Animate Main Computer Beacon if Level 2 is unlocked
+            if (mainComputerBeacon) {
+                mainComputerBeacon.rotation.y = time * 1.5;
+                const scale = 1 + Math.sin(time * 4) * 0.08;
+                mainComputerBeacon.scale.set(scale, scale, scale);
+            }
+
+            // Animate Quest Badges & Repaired Patrol Robots
+            Object.values(gameState.quests).forEach(q => {
+                if (!q.completed && q.badge) {
+                    q.badge.position.y = 2.2 + Math.sin(time * 3 + q.id) * 0.18;
+                    q.badge.rotation.y += 0.03;
+                }
+
+                if (q.completed && q.mesh) {
+                    if (!q.targetPos || Math.hypot(q.pos.x - q.targetPos.x, q.pos.z - q.targetPos.z) < 0.4) {
+                        q.targetPos = {
+                            x: (Math.random() - 0.5) * 14,
+                            z: (Math.random() - 0.5) * 10
+                        };
+                    }
+
+                    const moveAngle = Math.atan2(q.targetPos.z - q.pos.z, q.targetPos.x - q.pos.x);
+                    q.pos.x += Math.cos(moveAngle) * 0.035;
+                    q.pos.z += Math.sin(moveAngle) * 0.035;
+
+                    q.mesh.position.set(q.pos.x, 0, q.pos.z);
+                    q.mesh.rotation.y = -moveAngle + Math.PI / 2;
+                }
+            });
+
+            checkProximities();
+        }
+
+        function checkProximities() {
+            let foundQuest = null;
+            
+            // 1. Check proximity to Level 1 Robots
+            Object.values(gameState.quests).forEach(q => {
+                const dist = Math.hypot(gameState.playerPos.x - q.pos.x, gameState.playerPos.z - q.pos.z);
+                if (dist < 2.3 && !q.completed) {
+                    foundQuest = q;
+                }
+            });
+
+            const promptEl = document.getElementById('interaction-prompt');
+            const promptText = document.getElementById('prompt-text');
+            const promptSubtitle = document.getElementById('prompt-subtitle');
+            const promptIcon = document.getElementById('prompt-icon');
+
+            if (foundQuest) {
+                gameState.activeQuest = foundQuest;
+                gameState.activeInteractionType = 'quest';
+                promptEl.classList.remove('hidden');
+                promptIcon.className = "fa-solid fa-screwdriver-wrench text-2xl text-slate-950";
+                promptSubtitle.innerText = "ตรวจพบหุ่นยนต์ชำรุด";
+                promptText.innerText = `กด [ SPACE ] เพื่อซ่อมแซม ${foundQuest.name}`;
+                return;
+            }
+
+            // 2. Check proximity to Main Terminal Computer (Level 2 & Level 3)
+            const mainCompDist = Math.hypot(
+                gameState.playerPos.x - gameState.mainComputerPos.x,
+                gameState.playerPos.z - gameState.mainComputerPos.z
+            );
+
+            if (gameState.level1Completed && mainCompDist < 2.5) {
+                gameState.activeQuest = null;
+                gameState.activeInteractionType = 'mainComputer';
+                promptEl.classList.remove('hidden');
+                promptIcon.className = "fa-solid fa-laptop-code text-2xl text-slate-950";
+                
+                if (!gameState.level2Completed) {
+                    promptSubtitle.innerText = "ศูนย์ปฏิบัติการนักสืบ (Level 2)";
+                    promptText.innerText = `กด [ SPACE ] เพื่อเปิดภารกิจที่ 2: นักสืบจับผิดโปรแกรม`;
+                } else if (!gameState.level3Completed) {
+                    promptSubtitle.innerText = "ศูนย์ปฏิบัติการนักสืบขั้นสูง (Level 3)";
+                    promptText.innerText = `กด [ SPACE ] เพื่อเปิดภารกิจที่ 3: สงครามดีบั๊กขั้นเซียน`;
+                } else {
+                    promptSubtitle.innerText = "ระบบสแกนสมบูรณ์ 100%";
+                    promptText.innerText = `ภารกิจทั้งหมดเสร็จสิ้นแล้ว! (Code Master)`;
+                }
+                return;
+            }
+
+            // No nearby interactive target
+            gameState.activeQuest = null;
+            gameState.activeInteractionType = null;
+            promptEl.classList.add('hidden');
+        }
+
+        function triggerInteraction() {
+            if (gameState.activeInteractionType === 'quest') {
+                openRobotMinigame();
+            } else if (gameState.activeInteractionType === 'mainComputer') {
+                if (!gameState.level2Completed) {
+                    openLevel2Modal();
+                } else if (!gameState.level3Completed) {
+                    openLevel3Modal();
+                } else {
+                    alert("🏆 คุณผ่านการทดสอบเป็น Code Detective ครบทุกด่านเรียบร้อยแล้ว!");
+                }
+            }
+        }
+
+        function openRobotMinigame() {
+            const q = gameState.activeQuest;
+            if (!q || q.completed) return;
+
+            const modal = document.getElementById('minigame-modal');
+            const titleEl = document.getElementById('modal-title');
+            const subEl = document.getElementById('modal-subtitle');
+            const contentEl = document.getElementById('modal-content');
+
+            if (q.id === 1) {
+                titleEl.innerText = "ภารกิจ #1: ซ่อมระบบหลบสิ่งกีดขวาง (Vacuum Bot)";
+                subEl.innerText = "แก้ไขเงื่อนไขคำสั่งการหมุนหลบสิ่งกีดขวางในแผนผัง";
+                contentEl.innerHTML = `
+                    <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-300 space-y-3 font-mono">
+                        <p class="text-cyan-400 font-semibold">// เมื่อเซนเซอร์ตรวจพบผนัง ควรเลือกใช้คำสั่งใดหลบสิ่งกีดขวาง?</p>
+                        <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 text-slate-200">
+                            <code>if (obstacleAhead == true) { <br>&nbsp;&nbsp;<span class="text-amber-400 font-bold">[ เลือกคำสั่งแก้ไข ]</span> <br>}</code>
+                        </div>
+                        <div class="space-y-2 pt-2">
+                            <button onclick="answerQuest('vacuum', false)" class="w-full text-left p-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 transition text-slate-300 font-sans">A) speed = 0; // หยุดทำงานทันที</button>
+                            <button onclick="answerQuest('vacuum', true)" class="w-full text-left p-3.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border-2 border-cyan-500/60 transition text-cyan-200 font-sans font-semibold">B) rotateDirection() & continuePatrol(); // หมุนหาเส้นทางใหม่และทำความสะอาดต่อ</button>
+                        </div>
+                    </div>
+                `;
+            } else if (q.id === 2) {
+                titleEl.innerText = "ภารกิจ #2: แก้ไข Battery Loop (Helper Bot)";
+                subEl.innerText = "ป้องกันปัญหา Infinite Loop ของระบบชาร์จไฟ";
+                contentEl.innerHTML = `
+                    <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-300 space-y-3 font-mono">
+                        <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 text-slate-200">
+                            <code>while (battery &lt; 100) { <br>&nbsp;&nbsp;chargePower(); <br>&nbsp;&nbsp;<span class="text-rose-400 font-bold">// บรรทัดที่หายไปทำให้ลูปค้าง forever</span> <br>}</code>
+                        </div>
+                        <div class="space-y-2 font-sans">
+                            <button onclick="answerQuest('helper', true)" class="w-full text-left p-3.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border-2 border-cyan-500/60 transition text-cyan-200 font-semibold">A) battery += 15; // เพิ่มระดับแบตเตอรี่ในแต่ละรอบ</button>
+                            <button onclick="answerQuest('helper', false)" class="w-full text-left p-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 transition text-slate-300">B) battery = 0; // ตั้งค่าแบตเตอรี่เป็น 0</button>
+                        </div>
+                    </div>
+                `;
+            } else if (q.id === 3) {
+                titleEl.innerText = "ภารกิจ #3: แก้ไข Logic Gate (Industrial Arm)";
+                subEl.innerText = "คำนวณผลลัพธ์ของตรรกศาสตร์ในการหยิบจับชิ้นงาน";
+                contentEl.innerHTML = `
+                    <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-300 space-y-3">
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 font-mono text-center space-y-1">
+                            <p>sensorA (วัตถุพร้อม) = <span class="text-emerald-400 font-bold">TRUE</span></p>
+                            <p>sensorB (เซฟตี้ทำงาน) = <span class="text-emerald-400 font-bold">TRUE</span></p>
+                            <p class="mt-2 text-cyan-400 font-bold">ผลลัพธ์ตรรกะ (sensorA AND sensorB) คือ?</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 pt-2 font-sans">
+                            <button onclick="answerQuest('arm', true)" class="p-3.5 bg-emerald-950/80 hover:bg-emerald-900 font-bold text-emerald-300 rounded-xl border border-emerald-500/50">TRUE (เริ่มทำงาน)</button>
+                            <button onclick="answerQuest('arm', false)" class="p-3.5 bg-rose-950/80 hover:bg-rose-900 font-bold text-rose-300 rounded-xl border border-rose-500/50">FALSE (หยุดทำงาน)</button>
+                        </div>
+                    </div>
+                `;
+            } else if (q.id === 4) {
+                titleEl.innerText = "ภารกิจ #4: ซ่อมเงื่อนไขการส่งเอกสาร (Courier Rover)";
+                subEl.innerText = "เลือกคำสั่งสั่งการเมื่อถึงจุดเป้าหมาย";
+                contentEl.innerHTML = `
+                    <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-300 space-y-3 font-mono">
+                        <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 text-slate-200">
+                            <code>if (targetReached == true) { <br>&nbsp;&nbsp;<span class="text-amber-400 font-bold">[ เลือกคำสั่ง ]</span> <br>}</code>
+                        </div>
+                        <div class="space-y-2 font-sans">
+                            <button onclick="answerQuest('runner', true)" class="w-full text-left p-3.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border-2 border-cyan-500/60 transition text-cyan-200 font-semibold">A) dropPackage() & returnToBase(); // วางของและเดินกลับฐาน</button>
+                            <button onclick="answerQuest('runner', false)" class="w-full text-left p-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 transition text-slate-300">B) runSpeedMax(); // เพิ่มความเร็วสูงสุด</button>
+                        </div>
+                    </div>
+                `;
+            } else if (q.id === 5) {
+                titleEl.innerText = "ภารกิจ #5: เปิดใช้งาน Sensor Array (CyberDog)";
+                subEl.innerText = "เริ่มต้นระบบขับเคลื่อน 4 ขาของหุ่นยนต์สุนัข";
+                contentEl.innerHTML = `
+                    <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-300 space-y-3 font-sans">
+                        <p class="text-cyan-400 font-semibold">// ฟังก์ชันสั่งให้หุ่นยนต์เริ่มสำรวจพื้นที่?</p>
+                        <div class="space-y-2">
+                            <button onclick="answerQuest('dog', true)" class="w-full text-left p-3.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 border-2 border-cyan-500/60 transition text-cyan-200 font-semibold">A) cyberDog.startPatrol(); // เริ่มเดินสำรวจรอบห้อง</button>
+                            <button onclick="answerQuest('dog', false)" class="w-full text-left p-3.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 transition text-slate-300">B) cyberDog.sleepMode(); // ปิดการทำงานเพื่อพักผ่อน</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function answerQuest(qKey, isCorrect) {
+            if (isCorrect) {
+                const q = gameState.quests[qKey];
+                q.completed = true;
+
+                // Remove Warning Badge Light
+                if (q.badge) {
+                    scene.remove(q.badge);
+                    q.badge = null;
+                }
+
+                // Add Emerald Green Active Indicator Light
+                const activeLed = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 12), new THREE.MeshBasicMaterial({ color: 0x10b981 }));
+                activeLed.position.set(0, 0.95, 0);
+                q.mesh.add(activeLed);
+
+                const greenLight = new THREE.PointLight(0x10b981, 1.5, 3);
+                greenLight.position.set(0, 1.0, 0);
+                q.mesh.add(greenLight);
+
+                document.getElementById('minigame-modal').classList.add('hidden');
+                
+                const completedCount = Object.values(gameState.quests).filter(item => item.completed).length;
+                document.getElementById('task-progress').innerText = `${completedCount} / 5`;
+
+                // All 5 Robots Completed: Unlock Level 2
+                if (completedCount === 5 && !gameState.level1Completed) {
+                    gameState.level1Completed = true;
+                    gameState.level2Unlocked = true;
+
+                    // Update UI HUD
+                    document.getElementById('task-label').innerText = "ภารกิจด่านที่ 2";
+                    document.getElementById('task-progress').innerText = "ปลดล็อกแล้ว";
+
+                    // Create glowing beacon over main computer
+                    createMainComputerBeacon3D();
+
+                    setTimeout(() => {
+                        alert("🎉 ยอดเยี่ยม! เธอซ่อมหุ่นยนต์ครบทุกตัวแล้ว! แต่ยังมีปริศนาเกี่ยวกับโปรแกรมที่ต้องแก้ไข! เดินไปที่คอมพิวเตอร์หลักเพื่อเข้าสู่ภารกิจถัดไป!");
+                    }, 250);
+                }
+            } else {
+                alert("❌ คำตอบยังไม่ถูกต้อง ลองพิจารณาคำสั่งโค้ดใหม่อีกครั้งนะครับ!");
+            }
+        }
+
+        // ==========================================
+        // LEVEL 2: LAB CODE DEBUGGER SYSTEM LOGIC
+        // ==========================================
+
+        function openLevel2Modal() {
+            document.getElementById('level2-modal').classList.remove('hidden');
+            
+            // Show intro view by default when opening
+            document.getElementById('level2-intro-view').classList.remove('hidden');
+            document.getElementById('level2-step-view').classList.add('hidden');
+        }
+
+        function startLevel2Lesson() {
+            document.getElementById('level2-intro-view').classList.add('hidden');
+            document.getElementById('level2-step-view').classList.remove('hidden');
+            gameState.level2Step = 1;
+            renderLevel2Step(1);
+        }
+
+        function renderLevel2Step(stepNum) {
+            gameState.level2Step = stepNum;
+            const container = document.getElementById('level2-step-container');
+            const progressEl = document.getElementById('level2-progress-bar');
+            const stepIndicator = document.getElementById('level2-step-indicator');
+
+            stepIndicator.innerText = `ความคืบหน้า: ขั้นตอนที่ ${stepNum} / 3`;
+            progressEl.style.width = `${(stepNum / 3) * 100}%`;
+
+            if (stepNum === 1) {
+                // STEP 1: OBSERVE RESULTS
+                container.innerHTML = `
+                    <div class="bg-slate-900/90 p-5 rounded-2xl border border-cyan-500/40 space-y-4">
+                        <div class="flex items-center gap-3 border-b border-slate-800 pb-3">
+                            <span class="bg-cyan-500 text-slate-950 font-black px-2.5 py-1 rounded-lg text-xs">ขั้นที่ 1</span>
+                            <h4 class="font-bold text-white text-base">สังเกตผลลัพธ์การทำงานของโปรแกรม</h4>
+                        </div>
+
+                        <!-- Robot Grid Walk Simulation Visualization -->
+                        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col items-center gap-3">
+                            <div class="text-xs text-slate-300 text-center font-medium">
+                                🤖 <strong class="text-amber-400">โจทย์ปัญหา:</strong> หุ่นยนต์ต้องเดินไปข้างหน้า <span class="text-emerald-400 font-bold">3 ก้าว</span> แต่โปรแกรมสั่งให้เดิน <span class="text-rose-400 font-bold">5 ก้าว</span> หุ่นยนต์จึงเดินเลยเป้าหมาย นักสืบควรทำอย่างไร?
+                            </div>
+
+                            <div class="grid grid-cols-6 gap-1.5 bg-slate-900 p-3 rounded-xl border border-slate-800 w-full max-w-sm">
+                                <div class="bg-slate-800 p-2 rounded text-center text-xs text-slate-400 font-bold">จุดเริ่ม</div>
+                                <div class="bg-slate-800 p-2 rounded text-center text-xs text-slate-500">1</div>
+                                <div class="bg-slate-800 p-2 rounded text-center text-xs text-slate-500">2</div>
+                                <div class="bg-emerald-900/60 border border-emerald-500/80 p-2 rounded text-center text-xs text-emerald-300 font-bold">🎯 3 (เป้า)</div>
+                                <div class="bg-rose-900/40 border border-rose-500/40 p-2 rounded text-center text-xs text-rose-300">4</div>
+                                <div class="bg-rose-950 border border-rose-500 p-2 rounded text-center text-xs text-rose-400 font-bold">🤖 5 (เลย!)</div>
+                            </div>
+                        </div>
+
+                        <!-- Question Options -->
+                        <div class="space-y-2 pt-1">
+                            <p class="text-xs font-semibold text-cyan-300">เลือกแนวทางแก้ไขที่ถูกต้อง:</p>
+                            
+                            <button onclick="checkLevel2Answer(1, 'A')" class="w-full text-left p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition text-xs sm:text-sm text-slate-200 flex items-center gap-3">
+                                <span class="bg-slate-700 text-slate-300 font-bold w-6 h-6 rounded-full flex items-center justify-center text-xs">A</span>
+                                <span>เพิ่มจำนวนก้าวให้มากขึ้น</span>
+                            </button>
+
+                            <button onclick="checkLevel2Answer(1, 'B')" class="w-full text-left p-3.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900/90 border-2 border-cyan-500/60 transition text-xs sm:text-sm text-cyan-200 font-semibold flex items-center gap-3">
+                                <span class="bg-cyan-500 text-slate-950 font-bold w-6 h-6 rounded-full flex items-center justify-center text-xs">B</span>
+                                <span>แก้คำสั่งจาก 5 ก้าว เป็น 3 ก้าว</span>
+                            </button>
+
+                            <button onclick="checkLevel2Answer(1, 'C')" class="w-full text-left p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition text-xs sm:text-sm text-slate-200 flex items-center gap-3">
+                                <span class="bg-slate-700 text-slate-300 font-bold w-6 h-6 rounded-full flex items-center justify-center text-xs">C</span>
+                                <span>ลบคำสั่งทั้งหมด</span>
+                            </button>
+                        </div>
+
+                        <div id="step1-feedback" class="hidden p-3.5 rounded-xl text-xs sm:text-sm font-medium"></div>
+                    </div>
+                `;
+            } else if (stepNum === 2) {
+                // STEP 2: FIND FAULTY BLOCK
+                container.innerHTML = `
+                    <div class="bg-slate-900/90 p-5 rounded-2xl border border-cyan-500/40 space-y-4">
+                        <div class="flex items-center gap-3 border-b border-slate-800 pb-3">
+                            <span class="bg-amber-500 text-slate-950 font-black px-2.5 py-1 rounded-lg text-xs">ขั้นที่ 2</span>
+                            <h4 class="font-bold text-white text-base">ค้นหาบล็อกคำสั่งที่ผิดพลาด (Scratch Bug Detector)</h4>
+                        </div>
+
+                        <p class="text-xs text-slate-300">
+                            🎯 <strong>เป้าหมาย:</strong> สั่งให้หุ่นยนต์เดินตรงไปยังธงชัย <span class="text-emerald-400 font-bold">โดยไม่ต้องเลี้ยว</span> คลิกเลือกบล็อกคำสั่งที่เป็นสาเหตุทำให้การทำงานผิดพลาด:
+                        </p>
+
+                        <!-- Scratch Code Blocks Simulator -->
+                        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-2 max-w-md mx-auto font-sans">
+                            <!-- Block 1 -->
+                            <div onclick="selectScratchBlock(1)" id="scratch-block-1" class="cursor-pointer p-3 rounded-xl bg-amber-500 text-slate-950 font-extrabold text-xs flex items-center gap-2 transition transform active:scale-98 shadow">
+                                <i class="fa-solid fa-flag text-sm"></i> 1. เมื่อคลิกธงเขียว
+                            </div>
+
+                            <!-- Block 2 -->
+                            <div onclick="selectScratchBlock(2)" id="scratch-block-2" class="cursor-pointer p-3 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center gap-2 ml-4 transition transform active:scale-98 shadow">
+                                <i class="fa-solid fa-person-walking text-sm"></i> 2. เดิน 3 ก้าว
+                            </div>
+
+                            <!-- Block 3 (The Bug) -->
+                            <div onclick="selectScratchBlock(3)" id="scratch-block-3" class="cursor-pointer p-3 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center gap-2 ml-4 border-2 border-transparent hover:border-amber-400 transition transform active:scale-98 shadow">
+                                <i class="fa-solid fa-rotate-right text-sm"></i> 3. เลี้ยวขวา 90 องศา <span class="ml-auto text-[10px] bg-slate-900/60 px-2 py-0.5 rounded text-amber-300">คลิกเพื่อตรวจสอบ</span>
+                            </div>
+
+                            <!-- Block 4 -->
+                            <div onclick="selectScratchBlock(4)" id="scratch-block-4" class="cursor-pointer p-3 rounded-xl bg-blue-600 text-white font-bold text-xs flex items-center gap-2 ml-4 transition transform active:scale-98 shadow">
+                                <i class="fa-solid fa-person-walking text-sm"></i> 4. เดิน 3 ก้าว
+                            </div>
+                        </div>
+
+                        <div id="step2-feedback" class="hidden p-3.5 rounded-xl text-xs sm:text-sm font-medium"></div>
+
+                        <div class="pt-2 flex justify-end">
+                            <button id="btn-next-step3" disabled onclick="renderLevel2Step(3)" class="bg-slate-800 opacity-50 cursor-not-allowed text-slate-400 font-extrabold py-3 px-6 rounded-xl transition flex items-center gap-2 text-xs sm:text-sm">
+                                ไปยังขั้นตอนที่ 3 <i class="fa-solid fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else if (stepNum === 3) {
+                // STEP 3: FIX & TEST
+                container.innerHTML = `
+                    <div class="bg-slate-900/90 p-5 rounded-2xl border border-cyan-500/40 space-y-4">
+                        <div class="flex items-center gap-3 border-b border-slate-800 pb-3">
+                            <span class="bg-emerald-500 text-slate-950 font-black px-2.5 py-1 rounded-lg text-xs">ขั้นที่ 3</span>
+                            <h4 class="font-bold text-white text-base">แก้ไขและทดสอบโปรแกรม (Fix & Test)</h4>
+                        </div>
+
+                        <p class="text-xs text-slate-300">
+                            🛠️ <strong>คำสั่งเดิมที่มีบั๊ก:</strong> <code class="bg-slate-950 px-2 py-1 rounded text-rose-400">moveSteps(10);</code> (เดินไกลเกินไป) <br>เลือกคำสั่งที่ถูกต้อง แล้วกดปุ่ม <strong>"ทดสอบโปรแกรม"</strong> ด้านล่าง:
+                        </p>
+
+                        <!-- Fix Options selection -->
+                        <div class="space-y-2">
+                            <label class="block p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 cursor-pointer transition flex items-center gap-3">
+                                <input type="radio" name="fix-code" value="wrong1" class="accent-cyan-400">
+                                <span class="text-xs text-slate-300 font-mono">moveSteps(0); // ไม่เคลื่อนที่เลย</span>
+                            </label>
+
+                            <label class="block p-3 rounded-xl bg-slate-950 border border-cyan-500/60 bg-cyan-950/20 cursor-pointer transition flex items-center gap-3">
+                                <input type="radio" name="fix-code" value="correct" class="accent-cyan-400" checked>
+                                <span class="text-xs text-emerald-300 font-mono font-bold">moveSteps(3); // เดิน 3 ก้าวถึงจุดเป้าหมายพอดี</span>
+                            </label>
+
+                            <label class="block p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-cyan-500 cursor-pointer transition flex items-center gap-3">
+                                <input type="radio" name="fix-code" value="wrong2" class="accent-cyan-400">
+                                <span class="text-xs text-slate-300 font-mono">stopAllScripts(); // ปิดระบบการทำงาน</span>
+                            </label>
+                        </div>
+
+                        <!-- Live Robot Simulation Display Canvas -->
+                        <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex flex-col items-center justify-center min-h-[90px] relative overflow-hidden">
+                            <div id="sim-robot" class="transition-all duration-1000 ease-in-out text-2xl absolute left-6">🤖</div>
+                            <div class="absolute right-8 text-2xl">🚩</div>
+                            <div class="w-full border-b-2 border-dashed border-slate-800 absolute bottom-3"></div>
+                        </div>
+
+                        <button onclick="testAndRunLevel2Code()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black py-3.5 rounded-2xl transition shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 text-sm">
+                            <i class="fa-solid fa-vial"></i> ทดสอบโปรแกรม
+                        </button>
+
+                        <div id="step3-feedback" class="hidden p-3.5 rounded-xl text-xs sm:text-sm font-medium"></div>
+                    </div>
+                `;
+            }
+        }
+
+        function checkLevel2Answer(step, choice) {
+            const feedbackEl = document.getElementById('step1-feedback');
+            feedbackEl.classList.remove('hidden');
+
+            if (choice === 'B') {
+                feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 space-y-2";
+                feedbackEl.innerHTML = `
+                    <div class="flex items-center gap-2 font-bold text-emerald-400"><i class="fa-solid fa-circle-check text-lg"></i>ถูกต้องแล้ว!</div>
+                    <p>เพราะการสังเกตผลลัพธ์ทำให้เรารู้ว่า หุ่นยนต์เดินเกินเป้าหมายไป 2 ก้าว การปรับลดคำสั่งจาก 5 เป็น 3 ก้าว จึงทำให้หุ่นยนต์หยุดตรงเป้าหมายพอดี!</p>
+                    <button onclick="renderLevel2Step(2)" class="mt-2 w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 rounded-xl transition">
+                        ไปยังขั้นตอนที่ 2 <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                `;
+            } else {
+                feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-rose-950/90 border border-rose-500/60 text-rose-200 space-y-1";
+                feedbackEl.innerHTML = `
+                    <div class="flex items-center gap-2 font-bold text-rose-400"><i class="fa-solid fa-circle-xmark text-lg"></i>ลองใหม่อีกครั้งนะครับ!</div>
+                    <p>💡 <strong>คำใบ้:</strong> หุ่นยนต์เดินเลยเป้าหมายไปกี่ก้าว? ลองเปรียบเทียบระหว่างก้าวที่สั่ง (5 ก้าว) กับเป้าหมายที่แท้จริง (3 ก้าว) ดูครับ</p>
+                `;
+            }
+        }
+
+        function selectScratchBlock(blockNum) {
+            const feedbackEl = document.getElementById('step2-feedback');
+            const nextBtn = document.getElementById('btn-next-step3');
+            feedbackEl.classList.remove('hidden');
+
+            if (blockNum === 3) {
+                // Correct Faulty Block Identified
+                document.getElementById('scratch-block-3').className = "p-3 rounded-xl bg-rose-600 text-white font-extrabold text-xs flex items-center gap-2 ml-4 border-2 border-rose-300 shadow-lg animate-pulse";
+                
+                feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 space-y-1";
+                feedbackEl.innerHTML = `
+                    <div class="flex items-center gap-2 font-bold text-emerald-400"><i class="fa-solid fa-circle-check text-lg"></i>ถูกต้อง! ตรวจพบความผิดพลาด!</div>
+                    <p>บล็อก <strong>"เลี้ยวขวา 90 องศา"</strong> คือส่วนเกินที่ทำให้หุ่นยนต์ออกนอกเส้นทางตรง หากลบบล็อกนี้ออก หุ่นยนต์จะเดินตรงไปถึงเป้าหมายสำเร็จ!</p>
+                `;
+
+                nextBtn.disabled = false;
+                nextBtn.className = "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold py-3 px-6 rounded-xl transition shadow-lg shadow-cyan-500/30 flex items-center gap-2 text-xs sm:text-sm cursor-pointer";
+            } else {
+                feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-rose-950/90 border border-rose-500/60 text-rose-200 space-y-1";
+                feedbackEl.innerHTML = `
+                    <div class="flex items-center gap-2 font-bold text-rose-400"><i class="fa-solid fa-circle-xmark text-lg"></i>บล็อกนี้ทำงานถูกต้องแล้ว</div>
+                    <p>💡 <strong>คำใบ้:</strong> หุ่นยนต์ต้องเดินเป็นเส้นตรงอย่างเดียว บล็อกคำสั่งใดที่ทำให้ทิศทางเปลี่ยนแปลงไป?</p>
+                `;
+            }
+        }
+
+        function testAndRunLevel2Code() {
+            const selected = document.querySelector('input[name="fix-code"]:checked');
+            const feedbackEl = document.getElementById('step3-feedback');
+            const simRobot = document.getElementById('sim-robot');
+            feedbackEl.classList.remove('hidden');
+
+            if (selected && selected.value === 'correct') {
+                // Animate robot walk simulation
+                simRobot.style.left = 'calc(100% - 4rem)';
+
+                feedbackEl.className = "p-4 rounded-2xl text-xs sm:text-sm font-medium bg-emerald-950/95 border-2 border-emerald-500/80 text-emerald-200 space-y-3 mt-3 shadow-xl";
+                feedbackEl.innerHTML = `
+                    <div class="flex items-center gap-2 font-black text-emerald-300 text-base">
+                        <i class="fa-solid fa-trophy text-amber-400 text-xl"></i> เก่งมาก! ภารกิจสำเร็จ!
+                    </div>
+                    <p class="leading-relaxed">
+                        เธอตรวจพบข้อผิดพลาด แก้ไขคำสั่ง และทดสอบโปรแกรมจนทำงานได้ถูกต้องแล้ว! ตอนนี้เธอรู้วิธีสังเกตผลลัพธ์ ค้นหาข้อผิดพลาด และแก้ไขโปรแกรมเรียบร้อย!
+                    </p>
+                    <button onclick="completeLevel2Lesson()" class="w-full bg-gradient-to-r from-emerald-400 to-teal-500 text-slate-950 font-black py-3 rounded-xl transition shadow-lg">
+                        <i class="fa-solid fa-graduation-cap"></i> กลับสู่ห้องเรียน (จบภารกิจ)
+                    </button>
+                `;
+                
+                gameState.level2Completed = true;
+            } else {
+                simRobot.style.left = '1.5rem';
+                feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-rose-950/90 border border-rose-500/60 text-rose-200 space-y-1 mt-2";
+                feedbackEl.innerHTML = `
+                    <div class="flex items-center gap-2 font-bold text-rose-400"><i class="fa-solid fa-circle-xmark text-lg"></i>ทดสอบไม่ผ่าน!</div>
+                    <p>💡 <strong>คำใบ้:</strong> คำสั่งที่เลือกยังไม่ถูกต้อง เลือกคำสั่ง <code class="text-emerald-300">moveSteps(3);</code> เพื่อให้เดินถึงเป้าหมายพอดีครับ</p>
+                `;
+            }
+        }
+
+        function completeLevel2Lesson() {
+            document.getElementById('level2-modal').classList.add('hidden');
+            
+            // Unlock Level 3 State
+            gameState.level3Unlocked = true;
+
+            // Update Top Progress Ribbon Indicator
+            document.getElementById('task-label').innerText = "ภารกิจด่านที่ 3";
+            document.getElementById('task-progress').innerText = "ปลดล็อกแล้ว";
+
+            setTimeout(() => {
+                alert("🎉 เก่งมาก! คุณผ่านด่านที่ 2 แล้ว! ตอนนี้ระบบหลักของซูเปอร์คอมพิวเตอร์กำลังต้องการความช่วยเหลือใน 'ภารกิจที่ 3: สงครามดีบั๊กขั้นเซียน' กด Spacebar ที่คอมพิวเตอร์หลักเพื่อลุยต่อได้เลย!");
+            }, 300);
+        }
+
+        // ==========================================
+        // LEVEL 3: MASTER DEBUGGER SYSTEM LOGIC
+        // ==========================================
+
+        function openLevel3Modal() {
+            document.getElementById('level3-modal').classList.remove('hidden');
+            renderLevel3Step(1);
+        }
+
+        function renderLevel3Step(stepNum) {
+            gameState.level3Step = stepNum;
+            const container = document.getElementById('level3-question-container');
+            const progressEl = document.getElementById('level3-progress-bar');
+            const stepIndicator = document.getElementById('level3-step-indicator');
+
+            stepIndicator.innerText = `ด่านขั้นสูง: ข้อที่ ${stepNum} / 2`;
+            progressEl.style.width = `${(stepNum / 2) * 100}%`;
+
+            if (stepNum === 1) {
+                container.innerHTML = `
+                    <div class="bg-slate-900/90 p-5 rounded-2xl border border-purple-500/40 space-y-4">
+                        <div class="flex items-center gap-3 border-b border-slate-800 pb-3">
+                            <span class="bg-purple-500 text-white font-black px-2.5 py-1 rounded-lg text-xs">ข้อที่ 1</span>
+                            <h4 class="font-bold text-white text-base">วิเคราะห์ประเภทของข้อผิดพลาด (Bug Types)</h4>
+                        </div>
+
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 font-mono text-xs">
+                            <p class="text-rose-400 font-bold">// โค้ดคอมไพเลอร์ฟ้องความผิดพลาด:</p>
+                            <p class="text-slate-300 bg-slate-900 p-3 rounded-lg border border-slate-800">
+                                <span class="text-purple-400">let</span> totalScore = <span class="text-amber-400">100</span><br>
+                                <span class="text-rose-400 font-bold">console.log(totelScore);</span> <span class="text-slate-500">// Error: Uncaught ReferenceError: totelScore is not defined</span>
+                            </p>
+                        </div>
+
+                        <p class="text-xs text-slate-300 font-sans">
+                            🔍 ข้อผิดพลาดชนิดนี้ (พิมพ์ชื่อตัวแปรผิดจนทำให้โปรแกรมทำงานไม่ได้) เรียกว่าบั๊กประเภทใด?
+                        </p>
+
+                        <div class="space-y-2 pt-1 font-sans">
+                            <button onclick="checkLevel3Answer(1, 'syntax')" class="w-full text-left p-3.5 rounded-xl bg-purple-950/80 hover:bg-purple-900 border-2 border-purple-500/60 transition text-xs sm:text-sm text-purple-200 font-semibold flex items-center justify-between">
+                                <span>A) Syntax Error / Reference Error (ไวยากรณ์/ชื่อตัวแปรผิด)</span>
+                                <i class="fa-solid fa-code text-purple-400"></i>
+                            </button>
+
+                            <button onclick="checkLevel3Answer(1, 'logic')" class="w-full text-left p-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700 transition text-xs sm:text-sm text-slate-200 flex items-center justify-between">
+                                <span>B) Logic Error (คำนวณตรรกะผิด แต่โปรแกรมไม่ค้าง)</span>
+                                <i class="fa-solid fa-calculator text-slate-400"></i>
+                            </button>
+                        </div>
+
+                        <div id="level3-step1-feedback" class="hidden p-3.5 rounded-xl text-xs sm:text-sm font-medium"></div>
+                    </div>
+                `;
+            } else if (stepNum === 2) {
+                container.innerHTML = `
+                    <div class="bg-slate-900/90 p-5 rounded-2xl border border-purple-500/40 space-y-4">
+                        <div class="flex items-center gap-3 border-b border-slate-800 pb-3">
+                            <span class="bg-pink-500 text-white font-black px-2.5 py-1 rounded-lg text-xs">ข้อที่ 2</span>
+                            <h4 class="font-bold text-white text-base">การจำลองการทำงานลูป (Loop Trace Challenge)</h4>
+                        </div>
+
+                        <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2 font-mono text-xs">
+                            <p class="text-cyan-400 font-bold">// พิจารณาโค้ดวนลูปต่อไปนี้:</p>
+                            <p class="text-slate-300 bg-slate-900 p-3 rounded-lg border border-slate-800">
+                                <span class="text-purple-400">let</span> count = 0;<br>
+                                <span class="text-purple-400">for</span> (<span class="text-purple-400">let</span> i = 0; i &lt; 4; i++) {<br>
+                                &nbsp;&nbsp;count = count + 2;<br>
+                                }<br>
+                                <span class="text-slate-400">// เมื่อจบการทำงาน ลูปนี้ ค่าของ count จะมีค่าเท่ากับเท่าใด?</span>
+                            </p>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-3 pt-1 font-sans">
+                            <button onclick="checkLevel3Answer(2, '4')" class="p-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 font-bold text-center text-slate-200">4</button>
+                            <button onclick="checkLevel3Answer(2, '8')" class="p-3.5 rounded-xl bg-purple-950 hover:bg-purple-900 border-2 border-purple-500/60 font-black text-center text-purple-200 text-base shadow-lg">8</button>
+                            <button onclick="checkLevel3Answer(2, '10')" class="p-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 font-bold text-center text-slate-200">10</button>
+                        </div>
+
+                        <div id="level3-step2-feedback" class="hidden p-3.5 rounded-xl text-xs sm:text-sm font-medium"></div>
+                    </div>
+                `;
+            }
+        }
+
+        function checkLevel3Answer(step, answer) {
+            const feedbackEl = document.getElementById(`level3-step${step}-feedback`);
+            feedbackEl.classList.remove('hidden');
+
+            if (step === 1) {
+                if (answer === 'syntax') {
+                    feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 space-y-2";
+                    feedbackEl.innerHTML = `
+                        <div class="flex items-center gap-2 font-bold text-emerald-400"><i class="fa-solid fa-circle-check text-lg"></i>ถูกต้อง!</div>
+                        <p>พิมพ์ชื่อตัวแปร <code class="text-amber-300">totelScore</code> ผิดจาก <code class="text-emerald-300">totalScore</code> ทำให้คอมไพเลอร์หาชื่อไม่พบ จึงเกิดเป็น Syntax / Reference Error ครับ</p>
+                        <button onclick="renderLevel3Step(2)" class="mt-2 w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2.5 rounded-xl transition">
+                            ไปยังข้อที่ 2 <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    `;
+                } else {
+                    feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-rose-950/90 border border-rose-500/60 text-rose-200 space-y-1";
+                    feedbackEl.innerHTML = `
+                        <div class="flex items-center gap-2 font-bold text-rose-400"><i class="fa-solid fa-circle-xmark text-lg"></i>ยังไม่ถูกต้อง!</div>
+                        <p>💡 คำใบ้: โปรแกรมแจ้งเตือนหยุดทำงานทันทีเพราะไวยากรณ์/ชื่อสะกดตัวแปรผิด ไม่ใช่ข้อผิดพลาดจากการคำนวณทางตรรกะครับ</p>
+                    `;
+                }
+            } else if (step === 2) {
+                if (answer === '8') {
+                    feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-emerald-950/95 border-2 border-emerald-500/80 text-emerald-200 space-y-3 shadow-xl";
+                    feedbackEl.innerHTML = `
+                        <div class="flex items-center gap-2 font-black text-emerald-300 text-base">
+                            <i class="fa-solid fa-crown text-amber-400 text-xl"></i> สุดยอด! ถอดรหัสสำเร็จ!
+                        </div>
+                        <p class="leading-relaxed">
+                            ลูปทำงานทั้งหมด 4 รอบ (i = 0, 1, 2, 3) แต่ละรอบบวกเพิ่มรอบละ 2 จึงได้ผลลัพธ์รวมเป็น 2 + 2 + 2 + 2 = 8 ยอดเยี่ยมมากครับ!
+                        </p>
+                        <button onclick="completeLevel3Lesson()" class="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-black py-3 rounded-xl transition shadow-lg">
+                            <i class="fa-solid fa-trophy"></i> รับใบประกาศนียบัตร Code Master
+                        </button>
+                    `;
+                } else {
+                    feedbackEl.className = "p-3.5 rounded-xl text-xs sm:text-sm font-medium bg-rose-950/90 border border-rose-500/60 text-rose-200 space-y-1";
+                    feedbackEl.innerHTML = `
+                        <div class="flex items-center gap-2 font-bold text-rose-400"><i class="fa-solid fa-circle-xmark text-lg"></i>คำนวณยังไม่ถูกต้อง</div>
+                        <p>💡 คำใบ้: ลูปนี้หมุน 4 รอบ แต่ละรอบนำค่า count เดิมไปบวกเพิ่มทีละ 2 (รอบ1=2, รอบ2=4, รอบ3=6, รอบ4=?)</p>
+                    `;
+                }
+            }
+        }
+
+        function completeLevel3Lesson() {
+            document.getElementById('level3-modal').classList.add('hidden');
+            gameState.level3Completed = true;
+
+            document.getElementById('task-label').innerText = "สถานะการเล่น";
+            document.getElementById('task-progress').innerText = "ถ้วยรางวัลทอง!";
+
+            setTimeout(() => {
+                alert("🏆 ยินดีด้วยอย่างยิ่ง! คุณได้พิชิตเกม Code Detective 3D Ultra ครบทั้ง 3 ด่านเรียบร้อยแล้ว! คุณคือสุดยอดนักสืบแก้โค้ดระดับ Master!");
+            }, 300);
+        }
+
+        // Key Listeners
+        window.addEventListener('keydown', (e) => {
+            gameState.keys[e.key] = true;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                triggerInteraction();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            gameState.keys[e.key] = false;
+        });
+
+        const bindTouchBtn = (id, key) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            btn.addEventListener('touchstart', (e) => { e.preventDefault(); gameState.keys[key] = true; });
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); gameState.keys[key] = false; });
+            btn.addEventListener('mousedown', () => gameState.keys[key] = true);
+            btn.addEventListener('mouseup', () => gameState.keys[key] = false);
+        };
+
+        bindTouchBtn('btn-up', 'ArrowUp');
+        bindTouchBtn('btn-down', 'ArrowDown');
+        bindTouchBtn('btn-left', 'ArrowLeft');
+        bindTouchBtn('btn-right', 'ArrowRight');
+
+        document.getElementById('btn-action').addEventListener('click', triggerInteraction);
+        document.getElementById('interaction-prompt').addEventListener('click', triggerInteraction);
+        
+        document.getElementById('btn-close-modal').addEventListener('click', () => {
+            document.getElementById('minigame-modal').classList.add('hidden');
+        });
+
+        // Level 2 & 3 Modal Event Listeners
+        document.getElementById('btn-close-level2').addEventListener('click', () => {
+            document.getElementById('level2-modal').classList.add('hidden');
+        });
+        document.getElementById('btn-cancel-level2').addEventListener('click', () => {
+            document.getElementById('level2-modal').classList.add('hidden');
+        });
+        document.getElementById('btn-start-level2-lesson').addEventListener('click', startLevel2Lesson);
+
+        document.getElementById('btn-close-level3').addEventListener('click', () => {
+            document.getElementById('level3-modal').classList.add('hidden');
+        });
+
+        document.getElementById('btn-camera-toggle').addEventListener('click', () => {
+            targetCameraAngle += Math.PI / 2;
+        });
+
+        document.getElementById('btn-help').addEventListener('click', () => {
+            document.getElementById('help-modal').classList.remove('hidden');
+        });
+        document.getElementById('btn-close-help').addEventListener('click', () => {
+            document.getElementById('help-modal').classList.add('hidden');
+        });
+
+        // Initialize 3D Engine on load
+        window.onload = function () {
+            init3D();
+            animate();
+        };
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Interpolate smooth camera movement when toggled or dragged
+            cameraAngle += (targetCameraAngle - cameraAngle) * 0.08;
+            updateCameraPosition();
+
+            // Update player controller movement and robot logic state
+            updatePlayerAndRobots();
+
+            // Render 3D Scene
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
+        }
+    </script>
+</body>
+</html>
